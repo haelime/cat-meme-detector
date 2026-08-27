@@ -1,0 +1,11 @@
+diff --git a/modules/dnn/CMakeLists.txt b/modules/dnn/CMakeLists.txt
+--- a/modules/dnn/CMakeLists.txt
++++ b/modules/dnn/CMakeLists.txt
+@@ -502,6 +502,6 @@
+ endforeach()
+-if(NOT EMSCRIPTEN)
++if(NOT EMSCRIPTEN AND NOT OPENCV_DNN_DISABLE_MLAS)
+   add_subdirectory("${OpenCV_SOURCE_DIR}/3rdparty/mlas" "${CMAKE_BINARY_DIR}/3rdparty/mlas")
+ endif()
+ if(HAVE_MLAS)
+   add_definitions(-DHAVE_MLAS=1)

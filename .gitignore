@@ -1,0 +1,9 @@
+/build/
+/build-*/
+/.deps/
+/out/
+/.vs/
+/.vscode/
+CMakeUserPresets.json
+*.user
+*.suo
