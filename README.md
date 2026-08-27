@@ -65,6 +65,26 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 결과 실행 파일은 `build-opencv5/cat_meme_detector.exe`입니다.
 
+### 릴리즈 패키지 만들기
+
+CPU용 Release 빌드를 테스트한 뒤, 실행에 필요한 에셋과 DLL을 포함한 배포 폴더와 ZIP을 생성합니다.
+
+```powershell
+.\scripts\release.ps1
+```
+
+기본 산출물은 `out/cat-meme-detector-v1.0.0-windows-x64/`와 같은 이름의 `.zip`, `.zip.sha256` 파일입니다. 버전은 `CMakeLists.txt`에서 자동으로 읽습니다.
+
+```powershell
+# 기존 OpenCV 빌드를 재사용
+.\scripts\release.ps1 -SkipOpenCVBuild
+
+# 버전과 출력 디렉터리 지정
+.\scripts\release.ps1 -Version 1.0.1 -OutputDirectory artifacts
+```
+
+패키지에는 `cat_meme_detector.exe`, 작성된 `assets` 계층, OpenCV FFmpeg 플러그인, x64 Visual C++ 런타임 DLL, README와 서드파티 고지가 포함됩니다. ZIP 생성 전에 패키지의 모든 에셋을 원본과 대조하고 패키징된 실행 파일로 `--check-assets`를 실행합니다.
+
 ### 빌드 옵션
 
 ```powershell
@@ -170,6 +190,7 @@ include/cat_meme/        공개 C++ 헤더
 src/                     애플리케이션 및 매칭 구현
 tests/                   회귀 테스트와 테스트 데이터
 scripts/build.ps1        Windows 빌드 자동화
+scripts/release.ps1      CPU 릴리즈 패키지 및 체크섬 생성
 patches/                 OpenCV 5.0 빌드 호환 패치
 ```
 
