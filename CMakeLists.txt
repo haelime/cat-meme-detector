@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 project(cat_meme_detector VERSION 1.0.0 LANGUAGES CXX)
 
 option(CAT_MEME_BUILD_TESTS "Build the regression tests" ON)
+option(CAT_MEME_BUILD_BENCHMARKS "Build the DNN performance benchmark" ON)
 
 # OpenCV libraries are static, while all targets use the DLL MSVC runtime. This
 # also lets OpenCV's optional ASM DNN kernels build with current CMake versions.
@@ -65,6 +66,17 @@ add_custom_target(cat_meme_assets ALL
     COMMENT "Copying authored meme and detector assets"
 )
 add_dependencies(cat_meme_detector cat_meme_assets)
+
+if(CAT_MEME_BUILD_BENCHMARKS)
+    add_executable(cat_meme_dnn_benchmark benchmarks/dnn_benchmark.cpp)
+    target_link_libraries(cat_meme_dnn_benchmark PRIVATE cat_meme_core)
+    target_compile_definitions(cat_meme_dnn_benchmark PRIVATE
+        CAT_MEME_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    if(WIN32)
+        target_link_libraries(cat_meme_dnn_benchmark PRIVATE Psapi)
+    endif()
+endif()
 
 if(CAT_MEME_BUILD_TESTS)
     include(CTest)

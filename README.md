@@ -102,15 +102,31 @@ CPU용 Release 빌드를 테스트한 뒤, 실행에 필요한 에셋과 DLL을 
 
 CUDA 구성은 CPU 빌드와 분리된 `build-opencv5-cuda` 및 `.deps/opencv-install-cuda`에 생성됩니다. 현재 빌드 스크립트는 RTX 50 시리즈용 compute capability 12.0(`sm_120`)을 대상으로 합니다.
 
-CUDA Toolkit 13.x와 cuDNN 9를 설치한 뒤 새 PowerShell에서 실행합니다. cuDNN이 기본 경로에 없다면 `CUDNN_ROOT`를 지정합니다.
+CUDA Toolkit 13.x와 cuDNN 9를 준비한 뒤 새 PowerShell에서 실행합니다. 빌드 스크립트는 시스템 설치 경로와 프로젝트의 `.deps` 아래에서 cuDNN 및 cuFFT를 찾습니다. 그 밖의 경로를 사용한다면 `CUDNN_ROOT`를 지정합니다.
 
 ```powershell
-$env:CUDNN_ROOT = 'C:\path\to\cudnn'
 .\scripts\build.ps1 -EnableCuda
-.\build-opencv5-cuda\cat_meme_detector.exe
+.\scripts\run-cuda.ps1
 ```
 
+```powershell
+# cuDNN이 시스템 설치 경로나 .deps 밖에 있을 때만 지정
+$env:CUDNN_ROOT = 'C:\path\to\cudnn'
+```
+
+`run-cuda.ps1`은 프로젝트에 준비된 cuDNN/cuFFT DLL을 현재 실행에만 연결합니다. 애플리케이션 옵션도 그대로 전달할 수 있습니다. 예: `.\scripts\run-cuda.ps1 --camera 1`.
+
 애플리케이션은 CUDA FP16을 우선 사용하고, CUDA 초기화나 추론에 실패하면 CPU로 자동 전환합니다. 현재 백엔드는 콘솔, 결과 창, 실행 파일 옆의 `cat_meme_detector.log`에서 확인할 수 있습니다. CUDA 빌드에서도 `--cpu`를 주면 CPU만 사용합니다.
+
+### CPU와 CUDA 벤치마크
+
+Release 빌드에서 동일한 입력을 CPU와 CUDA FP16으로 반복 측정합니다.
+
+```powershell
+.\scripts\benchmark-dnn.ps1 -Runs 5 -Warmup 10 -Iterations 100
+```
+
+측정 방법과 현재 하드웨어의 결과는 [`benchmarks/cpu-vs-cuda.md`](benchmarks/cpu-vs-cuda.md), 원시 값은 `benchmarks/results/`에서 확인할 수 있습니다.
 
 ## 실행 옵션
 

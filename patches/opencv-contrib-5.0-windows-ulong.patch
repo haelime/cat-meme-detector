@@ -1,0 +1,40 @@
+diff --git a/modules/cudev/include/opencv2/cudev/util/vec_traits.hpp b/modules/cudev/include/opencv2/cudev/util/vec_traits.hpp
+--- a/modules/cudev/include/opencv2/cudev/util/vec_traits.hpp
++++ b/modules/cudev/include/opencv2/cudev/util/vec_traits.hpp
+@@ -55,6 +55,14 @@ namespace cv {
+ 
+     namespace cudev {
+ 
++#if defined(_WIN32)
++    // CUDA's Windows headers expose these vector families without the scalar
++    // aliases expected by cudev's token-pasting trait declarations.
++    using ulong = unsigned long;
++    using longlong = long long;
++    using ulonglong = unsigned long long;
++#endif
++
+ //! @addtogroup cudev
+ //! @{
+ 
+@@ -78,6 +86,10 @@ CV_CUDEV_MAKE_VEC_INST(float)
+ CV_CUDEV_MAKE_VEC_INST(double)
+ CV_CUDEV_MAKE_VEC_INST(long)
+ CV_CUDEV_MAKE_VEC_INST(ulong)
++#if defined(_WIN32)
++CV_CUDEV_MAKE_VEC_INST(longlong)
++CV_CUDEV_MAKE_VEC_INST(ulonglong)
++#endif
+ 
+ #undef CV_CUDEV_MAKE_VEC_INST
+ 
+@@ -146,6 +158,10 @@ CV_CUDEV_VEC_TRAITS_INST(float)
+ CV_CUDEV_VEC_TRAITS_INST(double)
+ CV_CUDEV_VEC_TRAITS_INST(long)
+ CV_CUDEV_VEC_TRAITS_INST(ulong)
++#if defined(_WIN32)
++CV_CUDEV_VEC_TRAITS_INST(longlong)
++CV_CUDEV_VEC_TRAITS_INST(ulonglong)
++#endif
+ 
+ #undef CV_CUDEV_VEC_TRAITS_INST
+ 

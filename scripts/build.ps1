@@ -19,12 +19,20 @@ $opencvInstall = Join-Path $dependencyRoot ("opencv-install$buildSuffix")
 $appBuild = Join-Path $projectRoot ("build-opencv5$buildSuffix")
 
 if ($EnableCuda) {
-    $nvcc = Get-Command nvcc.exe -ErrorAction SilentlyContinue
-    if (-not $nvcc) {
+    $nvccPath = (Get-Command nvcc.exe -ErrorAction SilentlyContinue).Source
+    if (-not $nvccPath) {
+        $machineCudaRoot = [Environment]::GetEnvironmentVariable('CUDA_PATH', 'Machine')
+        if ($machineCudaRoot) {
+            $candidateNvcc = Join-Path $machineCudaRoot 'bin\nvcc.exe'
+            if (Test-Path -LiteralPath $candidateNvcc) { $nvccPath = $candidateNvcc }
+        }
+    }
+    if (-not $nvccPath) {
         throw 'CUDA Toolkit was not found. Install CUDA Toolkit 13.x, reopen PowerShell, then rerun with -EnableCuda.'
     }
-    $cudaRoot = Split-Path -Parent (Split-Path -Parent $nvcc.Source)
-    $cudnnRoots = @($cudaRoot)
+    $cudaRoot = Split-Path -Parent (Split-Path -Parent $nvccPath)
+    $env:CUDA_PATH = $cudaRoot
+    $cudnnRoots = @($cudaRoot, $dependencyRoot)
     if ($env:CUDNN_ROOT) { $cudnnRoots += $env:CUDNN_ROOT }
     $standardCudnnRoot = 'C:\Program Files\NVIDIA\CUDNN'
     if (Test-Path -LiteralPath $standardCudnnRoot) { $cudnnRoots += $standardCudnnRoot }
@@ -38,6 +46,23 @@ if ($EnableCuda) {
     $cudnnLibrary = Get-ChildItem -LiteralPath (Split-Path -Parent (Split-Path -Parent $cudnnHeader.FullName)) `
         -Filter cudnn.lib -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $cudnnLibrary) { throw 'cudnn.lib was not found near the cuDNN headers.' }
+    $cudnnRuntime = Get-ChildItem -LiteralPath (Split-Path -Parent (Split-Path -Parent $cudnnHeader.FullName)) `
+        -Filter cudnn64_9.dll -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $cudnnRuntime) { throw 'cudnn64_9.dll was not found near the cuDNN headers.' }
+
+    # A selective CUDA Toolkit install may omit cuFFT. Allow an official
+    # project-local redistribution to provide the import library instead.
+    $cufftLibrary = Get-ChildItem -LiteralPath $dependencyRoot -Filter cufft.lib `
+        -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $cufftRuntime = Get-ChildItem -LiteralPath $dependencyRoot -Filter cufft64_*.dll `
+        -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $runtimeDirectories = @(
+        (Join-Path $cudaRoot 'bin'),
+        (Join-Path $cudaRoot 'bin\x64'),
+        $cudnnRuntime.DirectoryName
+    )
+    if ($cufftRuntime) { $runtimeDirectories += $cufftRuntime.DirectoryName }
+    $env:Path = (($runtimeDirectories | Select-Object -Unique) -join ';') + ';' + $env:Path
 }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -101,6 +126,33 @@ function Get-AndExpand([string]$url, [string]$archive, [string]$destination) {
     Expand-Archive -LiteralPath $archive -DestinationPath $dependencyRoot -Force
 }
 
+function Apply-SourcePatch([string]$source, [string]$patch, [string]$description) {
+    $rootPath = [System.IO.Path]::GetFullPath($projectRoot).TrimEnd('\')
+    $sourcePath = [System.IO.Path]::GetFullPath($source)
+    if (-not $sourcePath.StartsWith($rootPath + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Patch source is outside the project: $sourcePath"
+    }
+    $sourcePrefix = $sourcePath.Substring($rootPath.Length + 1).Replace('\', '/')
+    $directoryArgument = '--directory=' + $sourcePrefix
+
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & git.exe -C $projectRoot apply --check $directoryArgument $patch 2>$null
+    $canApply = $LASTEXITCODE -eq 0
+    $ErrorActionPreference = $previousErrorAction
+    if ($canApply) {
+        & git.exe -C $projectRoot apply $directoryArgument $patch
+        if ($LASTEXITCODE -ne 0) { throw "Could not apply $description." }
+        return
+    }
+
+    $ErrorActionPreference = 'Continue'
+    & git.exe -C $projectRoot apply --reverse --check $directoryArgument $patch 2>$null
+    $isApplied = $LASTEXITCODE -eq 0
+    $ErrorActionPreference = $previousErrorAction
+    if (-not $isApplied) { throw "$description no longer applies." }
+}
+
 $installedConfig = Get-ChildItem -LiteralPath $opencvInstall -Filter OpenCVConfig.cmake `
     -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.Directory.Name -eq 'staticlib' } |
@@ -115,14 +167,22 @@ if (-not $SkipOpenCVBuild -and ($ReconfigureOpenCV -or -not $installedConfig)) {
         (Join-Path $dependencyRoot 'opencv_contrib-5.0.0.zip') `
         $contribSource
 
-    $mlasPatch = Join-Path $projectRoot 'patches\opencv-5.0-disable-mlas-option.patch'
-    & git.exe -C $opencvSource apply --check $mlasPatch 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        & git.exe -C $opencvSource apply $mlasPatch
-        if ($LASTEXITCODE -ne 0) { throw 'Could not apply the OpenCV MLAS compatibility patch.' }
-    } else {
-        & git.exe -C $opencvSource apply --reverse --check $mlasPatch 2>$null
-        if ($LASTEXITCODE -ne 0) { throw 'The OpenCV MLAS compatibility patch no longer applies.' }
+    Apply-SourcePatch `
+        $opencvSource `
+        (Join-Path $projectRoot 'patches\opencv-5.0-disable-mlas-option.patch') `
+        'the OpenCV MLAS compatibility patch'
+    if ($EnableCuda) {
+        Apply-SourcePatch `
+            $contribSource `
+            (Join-Path $projectRoot 'patches\opencv-contrib-5.0-windows-ulong.patch') `
+            'the OpenCV contrib Windows CUDA compatibility patch'
+    }
+
+    $opencvModules = @('core', 'dnn', 'imgproc', 'imgcodecs', 'features',
+                       'highgui', 'videoio', 'xobjdetect')
+    if ($EnableCuda) {
+        # OpenCV core requires the opencv_contrib cudev module whenever CUDA is enabled.
+        $opencvModules += 'cudev'
     }
 
     $opencvConfigure = @(
@@ -135,7 +195,7 @@ if (-not $SkipOpenCVBuild -and ($ReconfigureOpenCV -or -not $installedConfig)) {
         '-DCMAKE_POLICY_DEFAULT_CMP0091=OLD',
         ('-DCMAKE_INSTALL_PREFIX="' + $opencvInstall + '"'),
         ('-DOPENCV_EXTRA_MODULES_PATH="' + (Join-Path $contribSource 'modules') + '"'),
-        '-DBUILD_LIST=core,dnn,imgproc,imgcodecs,features,highgui,videoio,xobjdetect',
+        ('-DBUILD_LIST=' + ($opencvModules -join ',')),
         '-DBUILD_SHARED_LIBS=OFF',
         '-DBUILD_WITH_STATIC_CRT=OFF',
         '-DBUILD_TESTS=OFF', '-DBUILD_PERF_TESTS=OFF', '-DBUILD_EXAMPLES=OFF',
@@ -154,6 +214,9 @@ if (-not $SkipOpenCVBuild -and ($ReconfigureOpenCV -or -not $installedConfig)) {
             ('-DCUDNN_LIBRARY="' + $cudnnLibrary.FullName + '"'),
             '-DENABLE_FAST_MATH=ON', '-DCUDA_FAST_MATH=ON'
         )
+        if ($cufftLibrary) {
+            $opencvConfigure += ('-DCUDA_cufft_LIBRARY="' + $cufftLibrary.FullName + '"')
+        }
     } else {
         $opencvConfigure += '-DWITH_CUDA=OFF'
     }
@@ -187,6 +250,13 @@ $ffmpegPlugin = Get-ChildItem -LiteralPath $opencvInstall `
 if ($ffmpegPlugin) {
     Copy-Item -LiteralPath $ffmpegPlugin.FullName -Destination $appBuild -Force
 }
-Invoke-DeveloperCommand ('ctest --test-dir "' + $appBuild + '" -C ' + $Configuration + ' --output-on-failure')
+$ctestCommand = 'ctest --test-dir "' + $appBuild + '" -C ' + $Configuration
+if ($EnableCuda) {
+    # Keep separately linked CUDA processes in separate CTest hosts on Windows.
+    Invoke-DeveloperCommand ($ctestCommand + ' -R cat_meme_bundled_assets --output-on-failure')
+    Invoke-DeveloperCommand ($ctestCommand + ' -R "^cat_meme_tests$" --output-on-failure')
+} else {
+    Invoke-DeveloperCommand ($ctestCommand + ' --output-on-failure')
+}
 
 Write-Host "Built: $(Join-Path $appBuild 'cat_meme_detector.exe')"
