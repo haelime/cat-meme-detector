@@ -2,6 +2,16 @@
 
 웹캠이나 사진에서 사람의 표정과 손동작을 인식하고, 가장 잘 어울리는 고양이 밈을 찾아 보여 주는 Windows용 C++17 애플리케이션입니다.
 
+[포트폴리오](https://haelime.github.io/posts/cat-meme-detector/)
+
+## 핵심 코드
+
+- [main.cpp](src/main.cpp): 웹캠 입력, 분석 주기와 결과 표시 연결
+- [semantic_analysis.cpp](src/semantic_analysis.cpp): ONNX 모델 추론과 표정, 손동작 해석
+- [hand_gesture_stabilizer.cpp](src/hand_gesture_stabilizer.cpp): 연속 관측으로 손동작 확정과 해제
+- [meme_database.cpp](src/meme_database.cpp): CSV 라벨과 시각 특징을 이용한 밈 매칭
+- [tests.cpp](tests/tests.cpp): 매칭, 손동작 안정화와 에셋 관련 regression 테스트
+
 OpenCV 5.0을 기반으로 얼굴 검출, 표정 분류, 손바닥 검출, 21개 손 관절 추정을 수행합니다. 결과 화면에는 입력 영상과 선택된 밈, 유사도, 표정, 손동작, DNN 백엔드가 함께 표시되며 GIF 밈은 애니메이션으로 재생됩니다.
 
 <p align="center">

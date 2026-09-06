@@ -10,9 +10,11 @@ HandGestureStabilizer::HandGestureStabilizer(std::size_t confirmations,
       releases_(std::max<std::size_t>(1, releases)) {}
 
 Gesture HandGestureStabilizer::update(Gesture observed) noexcept {
+    // Counts are analysis observations, not camera frames; main.cpp samples every fifth frame.
     if (observed == Gesture::None) {
         candidate_ = Gesture::None;
         candidateCount_ = 0;
+        // Brief detection gaps keep the last confirmed gesture until the release threshold.
         if (confirmed_ != Gesture::None) {
             ++missingCount_;
             if (missingCount_ >= releases_) {
